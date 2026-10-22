@@ -1,0 +1,5 @@
+{
+  "name": "limit",
+  "version": "0.1.0",
+  "description": "Always-on minimal 5h / 7d usage-limit readout in the status line."
+}

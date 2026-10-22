@@ -1,0 +1,5 @@
+{
+  "name": "claude-limit-mod",
+  "owner": { "name": "Demohu" },
+  "plugins": [{ "name": "limit", "source": "./" }]
+}
