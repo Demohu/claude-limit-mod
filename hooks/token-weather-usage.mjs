@@ -235,7 +235,7 @@ const SPANS = { five_hour: 5 * HOUR, seven_day: 7 * DAY };
 const ORDER = ["five_hour", "seven_day", "spend_limit"];
 // Pace = share used minus share of time elapsed, in points.
 // Above 0: using faster than time; beyond 15, or at 90% used: alert.
-const PACE_ALERT = 15;
+const PACE_ALERT = 7;
 const USED_ALERT = 90;
 // Limits belong to the account: the latest reading, across sessions, lives in $.store.
 const SHARED_KEY = "limits";
