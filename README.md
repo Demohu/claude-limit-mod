@@ -19,8 +19,10 @@ claude plugin install limit --marketplace Demohu/claude-limit-mod
 ## What it shows
 
 - **5h**: share of the 5-hour limit used, with the time left as `h:mm` (`4:44`). Hover the pill for the reset time.
-- **7d**: share of the 7-day limit used, no text: the percentage and bar turn amber when over the even pace and red when more than 15 points over or at 90% used. Hover the pill for the reset countdown.
-- **Cache**: time before the prompt cache lapses as `h:mm` (`0:52`). Amber under 10 minutes or after a miss (`missed`), red once expired (`expired`), grey when there is no data. Hover the pill for details.
+- **7d**: share of the 7-day limit used, no text: the percentage turns amber when over the even pace and red when more than 15 points over or at 90% used. Hover the pill for the reset weekday and time (`週三 15:30 重置`).
+- **Cache**: time before the prompt cache lapses as `h:mm` (`0:52`). Amber under 10 minutes or after a miss (`未命中`), red once expired (`已過期`), grey when there is no data. Hover the pill for details.
+
+Labels and tooltips are in Traditional Chinese by default; the `language` option accepts `zh`, `en` or `fr`.
 
 The bar colour follows the same pace: green at or under the even pace, amber above it, red beyond 15 points or at 90% used.
 

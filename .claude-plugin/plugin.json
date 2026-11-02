@@ -1,6 +1,6 @@
 {
   "name": "limit",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "description": "Usage limits above the prompt: 5h and 7d against the clock (7d with a pace warning) and the prompt cache.",
   "author": {
     "name": "Demohu"
@@ -22,7 +22,7 @@
     "language": {
       "type": "string",
       "title": "Language",
-      "description": "Labels in English (en) or French (fr), or auto: follows LC_ALL, LC_MESSAGES or LANG, and falls back to English.",
+      "description": "Labels in Traditional Chinese (zh), English (en) or French (fr), or auto: follows LC_ALL, LC_MESSAGES or LANG, and falls back to Traditional Chinese.",
       "default": "auto"
     }
   }

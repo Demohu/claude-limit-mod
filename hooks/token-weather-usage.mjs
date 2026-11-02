@@ -15,7 +15,7 @@
 
 // ---------- Language ----------
 
-// Labels in English or French. "auto" follows LC_ALL, LC_MESSAGES or LANG, then the runtime's
+// Labels in Traditional Chinese, English or French. "auto" follows LC_ALL, LC_MESSAGES or LANG, then the runtime's
 // locale; English unless one of them starts with "fr". The desktop app often sets none of
 // them, so the language option (/config) is the sure way to pick.
 const TEXT = {
@@ -99,8 +99,47 @@ const TEXT = {
     agents: (n) => (n === 1 ? "1 agent" : `${n} agents`),
     icons: { five_hour: "Limite 5 h", seven_day: "Limite 7 jours", spend_limit: "Plafond de dépense", reset: "Remise à zéro dans", cache: "Cache de prompt", cost: "Coût du fil", lastPrompt: "Dernier prompt", agents: "Agents en cours" },
   },
+  zh: {
+    weather: { clear: "晴朗", cloudy: "多雲", showers: "陣雨", storm: "雷雨", compact: "快該壓縮了" },
+    percent: (n) => `${n}%`,
+    labels: { five_hour: "5h", seven_day: "7d", spend_limit: "$" },
+    day: "天",
+    contextAlt: (word, percent, window) => `${word} · 已用 ${percent}（上限 ${window}）`,
+    turnsAlt: (n) => `最近 ${n} 次提問新增的 token`,
+    gaugeAlt: (label, value) => `${label}：已用 ${value}`,
+    cache: "快取",
+    expired: "已過期",
+    compacted: "已壓縮",
+    missed: "未命中",
+    causes: { model: "模型更換", lapsed: "逾時", prefix: "開頭內容更動" },
+    underMinute: "< 1 分",
+    cost: (usd) => (usd >= 100 ? `≈ $${Math.round(usd)}` : `≈ $${usd.toFixed(2)}`),
+    resetsAt: (time) => `${time} 重置`,
+    lastPrompt: (usd) => `+$${usd.toFixed(2)}`,
+    lastPrompt5h: (points) => `+${decimal(points)}% 5h`,
+    toRewrite: (tokens) => `需重寫 ${tokens}`,
+    newThread: "開新對話",
+    money: (usd) => (usd < 0.01 ? "< $0.01" : `$${amount(usd)}`),
+    atStake: (what) => `${what} 風險`,
+    tips: {
+      warm: (time, oneHour, observed) => `快取有效至 ${time}（${oneHour ? "1 小時" : "5 分鐘"}效期，${observed ? "實測" : "推估"}）。`,
+      lastRead: (share, tokens) => `上一則訊息：${share} 從快取讀取（${tokens}）。`,
+      costs: (read, rewrite) => `讀取目前的上下文：每則約 ${read}。若過期，重新寫入約 ${rewrite}。`,
+      saved: (usd) => `這個對話：快取已省下約 ${usd}。`,
+      soon: (time, tokens, costs) =>
+        `快取將於 ${time} 過期。請在那之前送出下一則訊息，否則要重新寫入 ${tokens} tokens${costs ? `（${costs.rewrite}，而不是 ${costs.read}）` : ""}。`,
+      expired: (tokens, cost) => `下一則訊息會以全價重新寫入整段上下文（${tokens}）${cost ? `，${cost}` : ""}。`,
+      compact: "繼續之前先 /compact：重新寫入的上下文會比較小。",
+      newThread: "開新對話可以避免這次重寫；壓縮則仍要整段重新讀取。",
+      missed: (share, cause, tokens, surcharge) =>
+        `這則訊息只有 ${share} 從快取讀取（${cause}）：重新寫入了 ${tokens} tokens${surcharge ? `，比快取命中的訊息多花 ${surcharge}` : ""}。`,
+      compacted: "已壓縮：下一則訊息會寫入一份新的、較小的快取。",
+    },
+    agents: (n) => `${n} 個 agent`,
+    icons: { five_hour: "5 小時額度", seven_day: "7 天額度", spend_limit: "花費上限", reset: "距離重置", cache: "提示快取", cost: "本次花費", lastPrompt: "上一則提問", agents: "執行中的 agent" },
+  },
 };
-let T = TEXT.en;
+let T = TEXT.zh;
 
 // 2.32, or 182 from 100 dollars (cents dropped).
 function amount(usd) {
@@ -472,7 +511,7 @@ export function register(on, options) {
 
 // "en" or "fr": the language option when it names one, otherwise the environment's locale.
 async function languageOf($, choice) {
-  if (choice === "en" || choice === "fr") return choice;
+  if (choice === "en" || choice === "fr" || choice === "zh") return choice;
   let locale = "";
   try {
     locale = (await $.env.get("LC_ALL")) || (await $.env.get("LC_MESSAGES")) || (await $.env.get("LANG")) || "";
@@ -486,7 +525,7 @@ async function languageOf($, choice) {
       locale = "";
     }
   }
-  return /^fr/i.test(locale) ? "fr" : "en";
+  return /^fr/i.test(locale) ? "fr" : /^en/i.test(locale) ? "en" : "zh";
 }
 
 // ---------- Turns: readings kept per session ----------
@@ -565,7 +604,7 @@ function gaugeOf(limit, now) {
   const tone = used >= USED_ALERT || pace > PACE_ALERT ? "alert" : pace > 0 ? "fast" : "calm";
   // The time left; the 5-hour reset time goes to the clock's tooltip.
   const when = left !== null ? duration(left) : "";
-  const resetAt = left !== null && limit.kind === "five_hour" ? clockTime(resetMs) : "";
+  const resetAt = left === null ? "" : limit.kind === "five_hour" ? clockTime(resetMs) : limit.kind === "seven_day" ? dateTime(resetMs) : "";
   // Local change: the 7-day pill shows the pace warning in place of the reset countdown.
   const gap = Math.round(Math.abs(pace));
   const paceText = elapsed === null ? "" : pace > PACE_ALERT ? `超速 +${gap}%` : pace > 0 ? `偏快 +${gap}%` : `餘裕 ${gap}%`;
@@ -589,6 +628,12 @@ function clockTime(ms) {
     const d = new Date(ms);
     return `${String(d.getUTCHours()).padStart(2, "0")}:${String(d.getUTCMinutes()).padStart(2, "0")} UTC`;
   }
+}
+
+// "週三 15:30" in the machine's time zone: the 7-day reset is days away, so it carries the weekday.
+function dateTime(ms) {
+  const d = new Date(ms);
+  return `週${"日一二三四五六"[d.getDay()]} ${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
 }
 
 // The 5-hour window's share used, or null without one.
@@ -798,11 +843,11 @@ function gaugeBlock({ Box, Text, Svg }, mode, g) {
     // Pace shows as color only; the countdown goes to the hover card.
   }
   else if (g.when && mode === "svg") {
-    parts.push(divider(Text, "s"), icon(Svg, "i", "clock", color, T.icons.reset, SMALL_ICON), Text({ key: "d", dimColor: true, children: g.when }));
+    parts.push(divider(Text, "s"), Text({ key: "d", dimColor: true, children: g.when }));
   }
   else if (g.when && mode === "text") parts.push(Text({ key: "d", dimColor: true, children: `· ${g.when}` }));
   // The 5-hour reset time goes to the hover card.
-  return { key: "gauge-" + g.label, tint: TINTS[g.kind] ?? TINTS.spend_limit, parts, tip: g.resetAt ? T.resetsAt(g.resetAt) : g.kind === "seven_day" && g.when ? `重置倒數 ${g.when}` : "" };
+  return { key: "gauge-" + g.label, tint: TINTS[g.kind] ?? TINTS.spend_limit, parts, tip: g.resetAt ? T.resetsAt(g.resetAt) : "" };
 }
 
 function cacheBlock({ Text, Svg }, mode, state) {
