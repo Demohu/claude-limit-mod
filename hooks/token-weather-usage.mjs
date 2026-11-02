@@ -574,12 +574,11 @@ function gaugeOf(limit, now) {
 
 // 3h02, 42 min, 2d23h (2j23h in French).
 function duration(ms) {
-  const minutes = Math.round(ms / MINUTE);
-  if (minutes < 60) return `${minutes} min`;
+  const minutes = Math.max(0, Math.round(ms / MINUTE));
   const days = Math.floor(minutes / 1440);
   const hours = Math.floor((minutes % 1440) / 60);
-  if (days > 0) return `${days}${T.day}${String(hours).padStart(2, "0")}h`;
-  return `${hours}h${String(minutes % 60).padStart(2, "0")}`;
+  const mm = String(minutes % 60).padStart(2, "0");
+  return days > 0 ? `${days}${T.day} ${hours}:${mm}` : `${hours}:${mm}`;
 }
 
 // 24-hour time in the machine's time zone; UTC when the runtime has no time zone data.
@@ -699,7 +698,7 @@ function ttlMs() {
 // advice is for the terminal only (the app puts it in tip, the bolt's tooltip).
 function cacheState(now) {
   if (cacheEnv.off) return null;
-  if (compacted) return { tone: "none", value: T.compacted, detail: "", tip: T.tips.compacted };
+  if (compacted) return { tone: "none", value: "—", detail: "", tip: T.tips.compacted };
   if (!cache) return { tone: "none", value: "—", detail: "" };
   const left = cache.at + ttlMs() - now;
   const tokens = readings.length > 0 ? readings[readings.length - 1].tokens : promptOf(cache);
@@ -718,7 +717,7 @@ function cacheState(now) {
     const tip = [T.tips.expired(short(tokens), costs && approx(costs.rewrite))];
     if (tokens >= LARGE_CONTEXT) tip.push(T.tips.newThread);
     else if (tokens >= COMPACT_AT) tip.push(T.tips.compact);
-    return { tone: "alert", value: T.expired, detail, advice, tip: tip.join("\n") };
+    return { tone: "alert", value: T.expired, detail: "", tip: tip.join("\n") };
   }
   const share = hitOf(cache);
   // A miss: what writing the cache again cost above a message served by it.
@@ -727,19 +726,19 @@ function cacheState(now) {
     const surcharge = price ? ((cache.write ?? 0) * (writePrice(price, ttl) - price.read)) / 1e6 : null;
     const extra = surcharge !== null && surcharge >= 0.01 ? ` · +${T.money(surcharge)}` : "";
     const tip = T.tips.missed(T.percent(share), cause, short(cache.write ?? 0), surcharge !== null && approx(surcharge));
-    return { tone: "fast", value: T.percent(share), detail: `${T.missed} · ${cause}${extra}`, tip };
+    return { tone: "fast", value: T.missed, detail: "", tip };
   }
-  const time = left < MINUTE ? T.underMinute : duration(left);
+  const mins = Math.max(0, Math.floor(left / MINUTE));
+  const time = `${Math.floor(mins / 60)}:${String(mins % 60).padStart(2, "0")}`;
   const soon = left < CACHE_SOON;
   const expiry = clockTime(cache.at + ttl);
   // A cache that served the message (90% or more), or one just rebuilt after a compaction,
   // shows its time alone; below, the share first.
-  const shown = share >= GOOD_HIT || cache.rebuilt ? { value: time, detail: "" } : { value: T.percent(share), detail: time };
+  const shown = { value: time, detail: "" };
   // Under 10 minutes: what letting it lapse would cost.
   if (soon) {
-    const stake = T.atStake(costs ? T.money(costs.rewrite) : short(tokens));
     const tip = T.tips.soon(expiry, short(tokens), costs && { read: approx(costs.read), rewrite: approx(costs.rewrite) });
-    return { tone: "fast", ...shown, urgent: true, stake, tip };
+    return { tone: "fast", ...shown, urgent: false, tip };
   }
   const tip = [T.tips.warm(expiry, ttl === TTL["1h"], seenTtl !== null), T.tips.lastRead(T.percent(share), short(cache.read ?? 0))];
   if (costs) {
@@ -791,12 +790,12 @@ function gaugeBlock({ Box, Text, Svg }, mode, g) {
   parts.push(Text({ key: "l", children: g.label }));
   if (mode === "svg" && Svg) parts.push(Svg({ key: "g", source: svgGauge(g), alt: T.gaugeAlt(g.label, g.value), width: GAUGE.width, height: GAUGE.height }));
   if (mode === "text") parts.push(textGauge(Box, Text, g));
-  parts.push(Text(g.tone === "alert" ? { key: "v", bold: true, color: TONES.alert.text, children: g.value } : { key: "v", bold: true, children: g.value }));
+  // The 7-day value carries the pace color too (no text, no countdown); the 5-hour one only turns red.
+  const hot = g.kind === "seven_day" ? g.tone !== "calm" : g.tone === "alert";
+  parts.push(Text(hot ? { key: "v", bold: true, color: TONES[g.tone].text, children: g.value } : { key: "v", bold: true, children: g.value }));
   // Terminal too narrow: the detail goes with the bar, leaving the label and the percentage.
-  if (g.kind === "seven_day" && g.paceText) {
-    const paced = g.tone === "calm" ? { dimColor: true } : { bold: true, color: TONES[g.tone].text };
-    if (mode === "svg") parts.push(divider(Text, "s"));
-    parts.push(Text({ key: "d", ...paced, children: mode === "svg" ? g.paceText : `· ${g.paceText}` }));
+  if (g.kind === "seven_day") {
+    // Pace shows as color only; the countdown goes to the hover card.
   }
   else if (g.when && mode === "svg") {
     parts.push(divider(Text, "s"), icon(Svg, "i", "clock", color, T.icons.reset, SMALL_ICON), Text({ key: "d", dimColor: true, children: g.when }));

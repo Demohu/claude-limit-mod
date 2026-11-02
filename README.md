@@ -18,12 +18,12 @@ claude plugin install limit --marketplace Demohu/claude-limit-mod
 
 ## What it shows
 
-- **5h**: share of the 5-hour limit used, with the time left. Hover the pill for the reset time.
-- **7d**: share of the 7-day limit used, with a pace warning in place of the countdown: `餘裕 6%` (under the even pace), `偏快 +7%` (over), `超速 +17%` (more than 15 points over). Hover the pill for the reset countdown.
-- **Cache**: time before the prompt cache lapses.
+- **5h**: share of the 5-hour limit used, with the time left as `h:mm` (`4:44`). Hover the pill for the reset time.
+- **7d**: share of the 7-day limit used, no text: the percentage and bar turn amber when over the even pace and red when more than 15 points over or at 90% used. Hover the pill for the reset countdown.
+- **Cache**: time before the prompt cache lapses as `h:mm` (`0:52`). Amber under 10 minutes or after a miss (`missed`), red once expired (`expired`), grey when there is no data. Hover the pill for details.
 
 The bar colour follows the same pace: green at or under the even pace, amber above it, red beyond 15 points or at 90% used.
 
 ## Credits
 
-A modified copy of [token-weather-usage](https://github.com/augiefra/claude-mods/tree/main/plugins/token-weather-usage) by Eric Cologni (Apache-2.0). The context weather and cost pills are hidden and the 7-day pill is changed as described above. See `LICENSE` and `NOTICE`.
+A modified copy of [token-weather-usage](https://github.com/augiefra/claude-mods/tree/main/plugins/token-weather-usage) by Eric Cologni (Apache-2.0). The context weather and cost pills are hidden and the 7-day, 5-hour and cache pills are simplified as described above. See `LICENSE` and `NOTICE`.

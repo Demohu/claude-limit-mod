@@ -1,6 +1,6 @@
 {
   "name": "limit",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "Usage limits above the prompt: 5h and 7d against the clock (7d with a pace warning) and the prompt cache.",
   "author": {
     "name": "Demohu"
