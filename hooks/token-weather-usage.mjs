@@ -58,7 +58,9 @@ const TEXT = {
       compacted: "Compacted: the next message writes a new, smaller cache.",
     },
     agents: (n) => (n === 1 ? "1 agent" : `${n} agents`),
-    icons: { five_hour: "5-hour limit", seven_day: "7-day limit", spend_limit: "Spend limit", reset: "Resets in", cache: "Prompt cache", cost: "Session cost", lastPrompt: "Last prompt", agents: "Agents running" },
+    icons: { five_hour: "5-hour limit", seven_day: "7-day limit", spend_limit: "Spend limit", reset: "Resets in", cache: "Prompt cache", cost: "Session cost", lastPrompt: "Last prompt", agents: "Agents running", copyId: "Copy session ID" },
+    copied: "Session ID copied",
+    copyFailed: "Copy failed",
   },
   fr: {
     weather: { clear: "Clair", cloudy: "Nuageux", showers: "Averses", storm: "Orage", compact: "Compacter bientôt" },
@@ -97,7 +99,9 @@ const TEXT = {
       compacted: "Compacté : le prochain message écrira un cache neuf, plus petit.",
     },
     agents: (n) => (n === 1 ? "1 agent" : `${n} agents`),
-    icons: { five_hour: "Limite 5 h", seven_day: "Limite 7 jours", spend_limit: "Plafond de dépense", reset: "Remise à zéro dans", cache: "Cache de prompt", cost: "Coût du fil", lastPrompt: "Dernier prompt", agents: "Agents en cours" },
+    icons: { five_hour: "Limite 5 h", seven_day: "Limite 7 jours", spend_limit: "Plafond de dépense", reset: "Remise à zéro dans", cache: "Cache de prompt", cost: "Coût du fil", lastPrompt: "Dernier prompt", agents: "Agents en cours", copyId: "Copier l'ID de session" },
+    copied: "ID de session copié",
+    copyFailed: "Échec de la copie",
   },
   zh: {
     weather: { clear: "晴朗", cloudy: "多雲", showers: "陣雨", storm: "雷雨", compact: "快該壓縮了" },
@@ -136,7 +140,9 @@ const TEXT = {
       compacted: "已壓縮：下一則訊息會寫入一份新的、較小的快取。",
     },
     agents: (n) => `${n} 個 agent`,
-    icons: { five_hour: "5 小時額度", seven_day: "7 天額度", spend_limit: "花費上限", reset: "距離重置", cache: "提示快取", cost: "本次花費", lastPrompt: "上一則提問", agents: "執行中的 agent" },
+    icons: { five_hour: "5 小時額度", seven_day: "7 天額度", spend_limit: "花費上限", reset: "距離重置", cache: "提示快取", cost: "本次花費", lastPrompt: "上一則提問", agents: "執行中的 agent", copyId: "複製 Session ID" },
+    copied: "已複製 Session ID",
+    copyFailed: "複製失敗",
   },
 };
 let T = TEXT.zh;
@@ -191,13 +197,13 @@ const WEATHER_ICON_COLORS = { clear: "#e0b000", cloudy: "#8ea3b8", showers: "#2f
 // hidden until the pointer is over the pill, drawn above the band, in the app theme's own
 // background and outline colors (tested in the app against a fixed dark card: this one reads better).
 const CARD = { back: "background", line: "subtle" };
-function hoverCard(Box, Text, tip) {
+function hoverCard(Box, Text, tip, side = "left") {
   const lines = String(tip).split("\n");
   // No key: a keyed Box would scope its own hover, and a hidden one is never hovered.
   return Box({
     position: "absolute",
     bottom: 1,
-    left: 0,
+    [side]: 0,
     display: "none",
     hover: { display: "flex" },
     flexDirection: "column",
@@ -233,9 +239,38 @@ const DAY = 24 * HOUR;
 const SPANS = { five_hour: 5 * HOUR, seven_day: 7 * DAY };
 // Display order; an unknown window goes last.
 const ORDER = ["five_hour", "seven_day", "spend_limit"];
+// Daily-budget pace for the 7-day window: each local day unlocks its whole share at 00:00, so the
+// even pace is what you may have used by the end of today, not by this minute. A weekend day gets
+// WEEKEND_DAY_SHARE of the week, the five weekdays split the rest; the days cut by the window's
+// start or end carry the part of their share that falls inside the window. Set PACE_WEIGHTED to
+// false for the plain linear clock.
+const PACE_WEIGHTED = true;
+const WEEKEND_DAY_SHARE = 0.05;
+const PACE_WEIGHTED_KINDS = new Set(["seven_day"]);
+const WEEKDAY_SHARE = (1 - 2 * WEEKEND_DAY_SHARE) / 5;
+// Share of the window unlocked by `now`: every day that has started, in full.
+function dailyElapsed(from, to, now) {
+  let unlocked = 0;
+  let total = 0;
+  const day = new Date(from);
+  day.setHours(0, 0, 0, 0);
+  while (day.getTime() < to) {
+    const next = new Date(day);
+    next.setDate(next.getDate() + 1);
+    const inside = (Math.min(to, next.getTime()) - Math.max(from, day.getTime())) / (next.getTime() - day.getTime());
+    const weekend = day.getDay() === 0 || day.getDay() === 6;
+    const share = (weekend ? WEEKEND_DAY_SHARE : WEEKDAY_SHARE) * inside;
+    total += share;
+    if (day.getTime() <= now) unlocked += share;
+    day.setTime(next.getTime());
+  }
+  return total > 0 ? (unlocked / total) * 100 : null;
+}
 // Pace = share used minus share of time elapsed, in points.
 // Above 0: using faster than time; beyond 15, or at 90% used: alert.
 const PACE_ALERT = 7;
+// Tighter for the 7-day window: yellow already means stop, red follows quickly.
+const PACE_ALERT_BY_KIND = { seven_day: 3 };
 const USED_ALERT = 90;
 // Limits belong to the account: the latest reading, across sessions, lives in $.store.
 const SHARED_KEY = "limits";
@@ -355,12 +390,15 @@ const ICONS = {
   // A speech bubble: what the last prompt cost.
   prompt: (c) =>
     `<g transform="translate(0 0.5)"><path d="M4 5.5A2.5 2.5 0 0 1 6.5 3h11A2.5 2.5 0 0 1 20 5.5v8a2.5 2.5 0 0 1-2.5 2.5H10l-4.5 4v-4H6.5A2.5 2.5 0 0 1 4 13.5z" fill="${c}" fill-opacity="0.14" stroke="${c}" stroke-width="2" stroke-linejoin="round"/><path d="M8.5 8.5h7M8.5 11.5h4.5" fill="none" stroke="${c}" stroke-width="2" stroke-linecap="round"/></g>`,
+  // Two overlapping sheets: copy the session id.
+  copy: (c) =>
+    `<rect x="8.5" y="8.5" width="12" height="12" rx="2.5" fill="none" stroke="${c}" stroke-width="2"/><path d="M15.5 8.5V6A2.5 2.5 0 0 0 13 3.5H6A2.5 2.5 0 0 0 3.5 6v7A2.5 2.5 0 0 0 6 15.5h2.5" fill="none" stroke="${c}" stroke-width="2" stroke-linecap="round"/>`,
   // A small robot: subagents at work.
   agents: (c) =>
     `<rect x="4" y="7.5" width="16" height="12.5" rx="3.5" fill="${c}" fill-opacity="0.14" stroke="${c}" stroke-width="2"/><path d="M12 7.5V4M2 12.5v3M22 12.5v3" fill="none" stroke="${c}" stroke-width="2" stroke-linecap="round"/><circle cx="12" cy="3.2" r="1.3" fill="${c}"/><circle cx="9" cy="13" r="1.5" fill="${c}"/><circle cx="15" cy="13" r="1.5" fill="${c}"/><path d="M9.5 16.8h5" fill="none" stroke="${c}" stroke-width="1.8" stroke-linecap="round"/>`,
 };
 // Icon color per block: deeper than the pill's tint, readable on light and dark backgrounds.
-const ICON_COLORS = { five_hour: "#3a9a62", seven_day: "#8a5fd0", spend_limit: "#b8892a", calm: "#1b9cbe", fast: "#d9962b", alert: "#d64545", cost: "#b8892a", agents: "#c4507f" };
+const ICON_COLORS = { five_hour: "#3a9a62", seven_day: "#8a5fd0", spend_limit: "#b8892a", calm: "#1b9cbe", fast: "#d9962b", alert: "#d64545", cost: "#b8892a", agents: "#c4507f", copy: "#8a8f98" };
 const LIMIT_ICONS = { five_hour: "gauge", seven_day: "calendar", spend_limit: "coin" };
 // Columns the terminal may cover at the end of the band.
 const RESERVED_COLUMNS = 2;
@@ -502,7 +540,34 @@ export function register(on, options) {
     if (props.hasSurvey || (readings.length === 0 && limits.list.length === 0)) return next(e);
     const elements = $.ui.resolve(e);
     const now = await $.clock.now();
-    const line = drawLine(elements, e.surface, props.bodyColumns ?? 80, now);
+    let line = drawLine(elements, e.surface, props.bodyColumns ?? 80, now);
+    // Desktop only: a small copy icon at the far right puts this session's id on the clipboard.
+    if (e.surface === "desktop" && elements.Svg && elements.Button) {
+      const { Box, Text, Svg, Button } = elements;
+      const button = Box({
+        key: "copy-session-id",
+        flexShrink: 0,
+        children: [
+          Button({
+            key: "btn",
+            label: T.icons.copyId,
+            children: [icon(Svg, "i", "copy", ICON_COLORS.copy, T.icons.copyId)],
+            onPress: async (press) => {
+              const id = await $.session.id();
+              const result = await $.ui.copy({ text: id, surface: press.surface });
+              $.ui.toast(result.isCopied ? T.copied : `${T.copyFailed}: ${result.reason}`);
+            },
+          }),
+          hoverCard(Box, Text, T.icons.copyId, "right"),
+        ],
+      });
+      line = Box({
+        flexDirection: "row",
+        alignItems: "center",
+        paddingRight: 1,
+        children: [Box({ key: "line", flexGrow: 1, children: line }), button],
+      });
+    }
     // Mods placed after us draw below our line; an empty drawing adds no blank line.
     const below = await next(e);
     return isBlank(below) ? line : elements.Box({ flexDirection: "column", children: [line, below] });
@@ -599,16 +664,20 @@ function gaugeOf(limit, now) {
   const resetMs = limit.resetsAt ? Date.parse(limit.resetsAt) : NaN;
   const span = SPANS[limit.kind];
   const left = Number.isFinite(resetMs) ? Math.max(0, resetMs - now) : null;
-  const elapsed = span && left !== null ? bound(((span - left) / span) * 100) : null;
+  let elapsed = span && left !== null ? bound(((span - left) / span) * 100) : null;
+  if (elapsed !== null && PACE_WEIGHTED && PACE_WEIGHTED_KINDS.has(limit.kind)) {
+    const daily = dailyElapsed(resetMs - span, resetMs, now);
+    if (daily !== null) elapsed = bound(daily);
+  }
   const pace = elapsed === null ? 0 : used - elapsed;
-  const tone = used >= USED_ALERT || pace > PACE_ALERT ? "alert" : pace > 0 ? "fast" : "calm";
+  const tone = used >= USED_ALERT || pace > (PACE_ALERT_BY_KIND[limit.kind] ?? PACE_ALERT) ? "alert" : pace > 0 ? "fast" : "calm";
   // The time left; the 5-hour reset time goes to the clock's tooltip.
   const when = left !== null ? duration(left) : "";
   const resetAt = left === null ? "" : limit.kind === "five_hour" ? clockTime(resetMs) : limit.kind === "seven_day" ? dateTime(resetMs) : "";
   // Local change: the 7-day pill shows the pace warning in place of the reset countdown.
   const gap = Math.round(Math.abs(pace));
-  const paceText = elapsed === null ? "" : pace > PACE_ALERT ? `超速 +${gap}%` : pace > 0 ? `偏快 +${gap}%` : `餘裕 ${gap}%`;
-  return { kind: limit.kind, label: T.labels[limit.kind] ?? limit.kind, used, elapsed, tone, value: T.percent(Math.round(used)), when, resetAt, paceText };
+  const paceText = elapsed === null ? "" : pace > (PACE_ALERT_BY_KIND[limit.kind] ?? PACE_ALERT) ? `超速 +${gap}%` : pace > 0 ? `偏快 +${gap}%` : `餘裕 ${gap}%`;
+  return { kind: limit.kind, label: T.labels[limit.kind] ?? limit.kind, used, elapsed, tone, margin: elapsed === null ? null : Math.round(elapsed - used), value: T.percent(Math.round(used)), when, resetAt, paceText };
 }
 
 // 3h02, 42 min, 2d23h (2j23h in French).
@@ -838,6 +907,14 @@ function gaugeBlock({ Box, Text, Svg }, mode, g) {
   // The 7-day value carries the pace color too (no text, no countdown); the 5-hour one only turns red.
   const hot = g.kind === "seven_day" ? g.tone !== "calm" : g.tone === "alert";
   parts.push(Text(hot ? { key: "v", bold: true, color: TONES[g.tone].text, children: g.value } : { key: "v", bold: true, children: g.value }));
+  // Local change: the 7-day value is followed by the room left against the week's clock:
+  // green while under the pace, amber when level, red once over; no sign, a divider before it.
+  if (g.kind === "seven_day" && g.margin !== null && mode !== "none") {
+    const marginTone = g.margin > 0 ? "calm" : g.margin === 0 ? "fast" : "alert";
+    if (mode === "svg") parts.push(divider(Text, "ms"));
+    else parts.push(Text({ key: "ms", dimColor: true, children: "|" }));
+    parts.push(Text({ key: "m", bold: true, color: TONES[marginTone].text, children: marginText(g.margin) }));
+  }
   // Terminal too narrow: the detail goes with the bar, leaving the label and the percentage.
   if (g.kind === "seven_day") {
     // Pace shows as color only; the countdown goes to the hover card.
@@ -1009,6 +1086,10 @@ function drawLine(elements, surface, columns, now) {
   return Box({ flexDirection: "row", alignItems: "center", paddingX: 1, children });
 }
 
+function marginText(margin) {
+  return `${Math.abs(margin)}%`;
+}
+
 // Width of the terminal line in characters, with the bars and details.
 function textWidth(gauges, cacheNow) {
   let width = 0;
@@ -1020,6 +1101,7 @@ function textWidth(gauges, cacheNow) {
     blocks++;
   }
   for (const g of gauges) width += g.label.length + 1 + TEXT_CELLS + 1 + g.value.length + (g.when ? 3 + g.when.length : 0);
+  for (const g of gauges) if (g.kind === "seven_day" && g.margin !== null) width += 3 + marginText(g.margin).length;
   blocks += gauges.length;
   if (cacheNow) {
     width += cacheText(cacheNow).length;
