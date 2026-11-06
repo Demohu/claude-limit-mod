@@ -537,8 +537,14 @@ export function register(on, options) {
 
   on("ui.render", { component: "AbovePrompt" }, async ($, e, next) => {
     const props = e.props ?? e;
-    if (props.hasSurvey || (readings.length === 0 && limits.list.length === 0)) return next(e);
+    if (props.hasSurvey) return next(e);
     const elements = $.ui.resolve(e);
+    if (readings.length === 0 && limits.list.length === 0) {
+      // No reading yet: show a placeholder so the mod is visibly loaded.
+      const below = await next(e);
+      const hint = elements.Text({ key: "limit-wait", dimColor: true, children: "limit · 等待用量資料…" });
+      return isBlank(below) ? hint : elements.Box({ flexDirection: "column", children: [hint, below] });
+    }
     const now = await $.clock.now();
     let line = drawLine(elements, e.surface, props.bodyColumns ?? 80, now);
     // Desktop only: a small copy icon at the far right puts this session's id on the clipboard.
@@ -550,8 +556,7 @@ export function register(on, options) {
         children: [
           Button({
             key: "btn",
-            label: T.icons.copyId,
-            children: [icon(Svg, "i", "copy", ICON_COLORS.copy, T.icons.copyId)],
+            label: "SID",
             onPress: async (press) => {
               const id = await $.session.id();
               const result = await $.ui.copy({ text: id, surface: press.surface });
@@ -1067,7 +1072,11 @@ function drawLine(elements, surface, columns, now) {
     const pills = blocks.map((b) =>
       Box({
         ...row(b),
-        children: b.tip ? [...b.parts, hoverCard(Box, Text, b.tip)] : b.parts,
+        children: (() => {
+          // Leading icons (keys "k", "i"): a fixed-width slot with a trailing gap, so the label never overlaps them.
+          const parts = b.parts.map((p) => (p && p.type === "Svg" && (p.key === "k" || p.key === "i") ? Box({ key: p.key + "-slot", flexShrink: 0, paddingRight: 1, children: [p] }) : p));
+          return b.tip ? [...parts, hoverCard(Box, Text, b.tip)] : parts;
+        })(),
         flexShrink: 0,
         paddingX: 1,
         paddingY: 0,

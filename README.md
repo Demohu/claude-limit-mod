@@ -19,7 +19,7 @@ claude plugin install limit --marketplace Demohu/claude-limit-mod
 ## What it shows
 
 - **5h**: share of the 5-hour limit used, with the time left as `h:mm` (`4:44`). Hover the pill for the reset time.
-- **7d**: share of the 7-day limit used, no text: the percentage turns amber when over the even pace and red when more than 7 points over or at 90% used. Hover the pill for the reset weekday and time (`週三 15:30 重置`).
+- **7d**: share of the 7-day limit used, no text (the even pace is a daily budget: each weekend day gets 5% of the week and the five weekdays split the rest, a day's whole share unlocks at 00:00; red beyond 3 points over pace; edit `WEEKEND_DAY_SHARE`, `PACE_ALERT_BY_KIND` or `PACE_WEIGHTED` in `hooks/token-weather-usage.mjs`): the percentage turns amber when over the even pace and red when more than 7 points over or at 90% used. Hover the pill for the reset weekday and time (`週三 15:30 重置`).
 - **Cache**: time before the prompt cache lapses as `h:mm` (`0:52`). Amber under 10 minutes or after a miss (`未命中`), red once expired (`已過期`), grey when there is no data. Hover the pill for details.
 
 Labels and tooltips are in Traditional Chinese by default; the `language` option accepts `zh`, `en` or `fr`.
